@@ -1,4 +1,4 @@
-# 💳 Subly
+# Subly
 
 > Gestiona les teves subscripcions de forma senzilla.
 
@@ -17,17 +17,17 @@ Aplicació web que permet afegir, editar i eliminar subscripcions, veure el cost
 
 ---
 
-## 📋 Requisits
+## Requisits
 
-- Python 3.x
+- Python
 - Node.js + npm
-- MySQL (XAMPP o similar)
+- MySQL
 
 ---
 
-## 🚀 Com llançar l'app
+##  Com llançar l'app
 
-**1. Engegar MySQL** (amb XAMPP o similar). La base de dades `subly` es crea automàticament.
+**1. Engegar MySQL**. La base de dades `subly` es crea automàticament.
 
 **2. Backend**
 ```bash
@@ -49,7 +49,7 @@ npm run dev
 
 ---
 
-## 👤 Usuari de prova
+## Usuari de prova
 
 | Email | Contrasenya |
 |-------|------------|
@@ -57,7 +57,7 @@ npm run dev
 
 ---
 
-## 📁 Estructura del projecte
+##  Estructura del projecte
 
 ```
 MVP/
