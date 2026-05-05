@@ -6,7 +6,7 @@ Aplicació web que permet afegir, editar i eliminar subscripcions, veure el cost
 
 ---
 
-## 🛠 Tecnologies
+## Tecnologies
 
 | Capa | Tecnologia |
 |------|-----------|
