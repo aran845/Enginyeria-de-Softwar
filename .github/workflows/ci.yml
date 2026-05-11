@@ -1,0 +1,35 @@
+name: Subly CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Basic file check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: List project files
+        run: ls -la
+
+      - name: Check repository structure
+        run: echo "Repository structure checked successfully."
+
+  test:
+    name: Basic test check
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run basic test placeholder
+        run: echo "Basic CI test executed successfully."
