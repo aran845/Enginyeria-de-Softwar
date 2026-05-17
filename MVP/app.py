@@ -294,7 +294,13 @@ def api_get_settings():
 def api_save_settings():
     """Guardar configuración del usuario."""
     user_id = int(get_jwt_identity())
-    data = request.get_json()
+    data = request.get_json() or {}
+
+    # Evitar conflicto si el cliente incluye user_id u otros campos inmutables
+    data.pop('user_id', None)
+    data.pop('id', None)
+    data.pop('created_at', None)
+    data.pop('updated_at', None)
 
     print(f"📝 Guardando settings para usuario {user_id}: {data}")
     success = save_user_settings(user_id, **data)

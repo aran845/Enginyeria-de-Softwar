@@ -230,12 +230,29 @@ def save_user_settings(user_id, **kwargs):
         exists = cursor.fetchone()
 
         allowed = ['email_notifications', 'renewal_alerts', 'monthly_report', 'budget_alert', 'budget_limit', 'currency', 'theme']
-        fields = {k: v for k, v in kwargs.items() if k in allowed}
+        raw_fields = {k: v for k, v in kwargs.items() if k in allowed}
 
-        if not fields:
+        if not raw_fields:
             cursor.close()
             conn.close()
             return True
+
+        # Normalize/coerce types before saving to DB to avoid connector errors
+        fields = {}
+        for k, v in raw_fields.items():
+            if k in ['email_notifications', 'renewal_alerts', 'monthly_report', 'budget_alert']:
+                # MySQL TINYINT(1) - store as 0/1
+                fields[k] = 1 if bool(v) else 0
+            elif k == 'budget_limit':
+                try:
+                    fields[k] = float(v)
+                except (ValueError, TypeError):
+                    fields[k] = 0.0
+            elif k in ['currency', 'theme']:
+                # Ensure string and length limits
+                fields[k] = (str(v) if v is not None else '')[:20]
+            else:
+                fields[k] = v
 
         if exists:
             set_clause = ', '.join(f'{k} = %s' for k in fields)

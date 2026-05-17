@@ -114,7 +114,7 @@ def send_weekly_reminder(user, upcoming_subs):
 
     send_email(user['email'], subject, html)
 
-
+def send_renewal_reminder_7days(user, reminder_subs):
     """Envía recordatorios diarios de renovaciones en los próximos 7 días."""
     if not reminder_subs:
         return
