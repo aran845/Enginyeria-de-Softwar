@@ -20,6 +20,15 @@ def get_db():
     return conn
 
 
+def column_exists(cursor, table, column):
+    """Verifica si una columna existe en una tabla."""
+    try:
+        cursor.execute(f"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s", (table, column))
+        return cursor.fetchone()[0] > 0
+    except Exception:
+        return False
+
+
 def init_db():
     """Crea la base de datos y las tablas si no existen."""
     # Primero crear la base de datos si no existe
@@ -64,6 +73,52 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         ) ENGINE=InnoDB
     ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_settings (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT UNIQUE NOT NULL,
+            email_notifications TINYINT(1) DEFAULT 1,
+            renewal_alerts TINYINT(1) DEFAULT 1,
+            monthly_report TINYINT(1) DEFAULT 0,
+            budget_alert TINYINT(1) DEFAULT 1,
+            budget_limit DECIMAL(10,2) DEFAULT 100.00,
+            currency VARCHAR(10) DEFAULT 'EUR',
+            theme VARCHAR(20) DEFAULT 'dark',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS notification_log (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            subscription_id INT NOT NULL,
+            notification_type VARCHAR(50) NOT NULL,
+            sent_date DATE NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY unique_notification (user_id, subscription_id, notification_type, sent_date),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (subscription_id) REFERENCES subscriptions(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB
+    ''')
+
+    # Migración: Añadir columnas faltantes en user_settings
+    if not column_exists(cursor, 'user_settings', 'theme'):
+        try:
+            cursor.execute('ALTER TABLE user_settings ADD COLUMN theme VARCHAR(20) DEFAULT "dark"')
+            print("✓ Columna 'theme' añadida a user_settings")
+        except Exception as e:
+            print(f"⚠ No se pudo añadir columna 'theme': {e}")
+
+    if not column_exists(cursor, 'user_settings', 'currency'):
+        try:
+            cursor.execute('ALTER TABLE user_settings ADD COLUMN currency VARCHAR(10) DEFAULT "EUR"')
+            print("✓ Columna 'currency' añadida a user_settings")
+        except Exception as e:
+            print(f"⚠ No se pudo añadir columna 'currency': {e}")
 
     conn.commit()
     cursor.close()

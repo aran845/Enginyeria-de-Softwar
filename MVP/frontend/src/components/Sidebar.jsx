@@ -1,14 +1,17 @@
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 export default function Sidebar() {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
 
     const handleLogout = () => {
         logout();
         navigate('/login');
     };
+
+    const isActive = (path) => location.pathname === path;
 
     return (
         <aside className="sidebar" id="sidebar">
@@ -18,10 +21,30 @@ export default function Sidebar() {
                     <span className="logo-text">Subly</span>
                 </div>
                 <nav className="sidebar-nav">
-                    <a href="#" className="nav-item active" id="nav-dashboard">
+                    <button
+                        onClick={() => navigate('/dashboard')}
+                        className={`nav-item ${isActive('/dashboard') ? 'active' : ''}`}
+                        id="nav-dashboard"
+                    >
                         <span className="nav-icon">📊</span>
                         <span>Dashboard</span>
-                    </a>
+                    </button>
+                    <button
+                        onClick={() => navigate('/reports')}
+                        className={`nav-item ${isActive('/reports') ? 'active' : ''}`}
+                        id="nav-reports"
+                    >
+                        <span className="nav-icon">📈</span>
+                        <span>Reportes</span>
+                    </button>
+                    <button
+                        onClick={() => navigate('/settings')}
+                        className={`nav-item ${isActive('/settings') ? 'active' : ''}`}
+                        id="nav-settings"
+                    >
+                        <span className="nav-icon">⚙️</span>
+                        <span>Configuración</span>
+                    </button>
                 </nav>
             </div>
             <div className="sidebar-bottom">

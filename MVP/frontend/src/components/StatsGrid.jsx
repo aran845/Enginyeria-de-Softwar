@@ -1,4 +1,9 @@
+import { useSettings } from '../context/SettingsContext';
+
 export default function StatsGrid({ monthlyTotal, yearlyTotal, activeCount }) {
+    const { getCurrencySymbol } = useSettings();
+    const symbol = getCurrencySymbol();
+
     return (
         <div className="stats-grid" id="stats-section">
             <div className="stat-card stat-card-1">
@@ -6,7 +11,7 @@ export default function StatsGrid({ monthlyTotal, yearlyTotal, activeCount }) {
                 <div className="stat-info">
                     <span className="stat-label">Gasto Mensual</span>
                     <span className="stat-value" id="monthly-total">
-                        {monthlyTotal.toFixed(2)}€
+                        {symbol}{monthlyTotal.toFixed(2)}
                     </span>
                 </div>
             </div>
@@ -15,7 +20,7 @@ export default function StatsGrid({ monthlyTotal, yearlyTotal, activeCount }) {
                 <div className="stat-info">
                     <span className="stat-label">Gasto Anual</span>
                     <span className="stat-value" id="yearly-total">
-                        {yearlyTotal.toFixed(2)}€
+                        {symbol}{yearlyTotal.toFixed(2)}
                     </span>
                 </div>
             </div>

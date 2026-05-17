@@ -1,4 +1,9 @@
+import { useSettings } from '../context/SettingsContext';
+
 export default function SubCard({ sub, onEdit, onDelete }) {
+    const { getCurrencySymbol } = useSettings();
+    const symbol = getCurrencySymbol();
+
     // Calcular días hasta renovación
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -56,7 +61,7 @@ export default function SubCard({ sub, onEdit, onDelete }) {
             <h3 className="sub-name">{sub.service_name}</h3>
             <span className="sub-category">{sub.category}</span>
             <div className="sub-price-row">
-                <span className="sub-price">{sub.price.toFixed(2)}€</span>
+                <span className="sub-price">{symbol}{sub.price.toFixed(2)}</span>
                 <span className="sub-cycle">
                     / {sub.billing_cycle === 'monthly' ? 'mes' : 'año'}
                 </span>
