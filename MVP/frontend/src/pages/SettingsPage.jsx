@@ -24,11 +24,14 @@ export default function SettingsPage() {
 
     const handleSave = async () => {
         setSaving(true);
+        console.log('💾 Guardando settings:', localSettings);
         const success = await updateSettings(localSettings);
         setSaving(false);
         if (success) {
             setSaved(true);
             setTimeout(() => setSaved(false), 3000);
+        } else {
+            alert('Error al guardar la configuración');
         }
     };
 

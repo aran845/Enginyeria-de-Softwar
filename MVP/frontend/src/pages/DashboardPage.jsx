@@ -91,11 +91,17 @@ export default function DashboardPage() {
         setPendingSave(() => onConfirm);
     };
 
-    const handleConfirmBudgetOverride = () => {
+    const handleConfirmBudgetOverride = async () => {
+        if (!pendingSave) return;
+
         setBudgetWarning(null);
-        if (pendingSave) {
-            pendingSave();
-            setPendingSave(null);
+        setPendingSave(null);
+
+        try {
+            await pendingSave();
+        } catch (err) {
+            console.error('Error in budget override:', err);
+            alert('Error al guardar suscripción');
         }
     };
 

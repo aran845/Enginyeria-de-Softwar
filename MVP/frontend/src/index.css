@@ -322,8 +322,33 @@ input, select, button { font-family: var(--font); }
 .renewal-warning { color: #b45309; font-weight: 700; }
 .renewal-urgent { color: #dc2626; font-weight: 700; }
 .sub-renewal .sub-renewal-date { color: #b45309; }
-.sub-urgent { border-color: var(--border-urgent); background: var(--bg-urgent); }
-.sub-urgent .sub-footer { border-top-color: var(--border-urgent); }
+.sub-urgent {
+    border-color: var(--border-urgent);
+    background: var(--bg-urgent);
+}
+.sub-urgent .sub-footer {
+    border-top-color: var(--border-urgent);
+}
+.sub-urgent .sub-name,
+.sub-urgent .sub-category,
+.sub-urgent .sub-price,
+.sub-urgent .sub-cycle,
+.sub-urgent .sub-renewal-label,
+.sub-urgent .sub-renewal-date {
+    color: inherit;
+}
+:root[data-theme="dark"] .sub-urgent .sub-name {
+    color: #fef2f2;
+    font-weight: 700;
+}
+:root[data-theme="dark"] .sub-urgent .sub-price {
+    color: #fca5a5;
+    font-weight: 700;
+}
+:root[data-theme="dark"] .sub-urgent .sub-renewal-date {
+    color: #fca5a5;
+    font-weight: 700;
+}
 
 /* ─── Empty State ────────────────────────────────────────── */
 .empty-state {

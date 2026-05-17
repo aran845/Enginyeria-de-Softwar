@@ -43,16 +43,28 @@ export function SettingsProvider({ children }) {
 
     const updateSettings = async (updates) => {
         try {
+            console.log('🔄 Actualizando settings:', updates);
             const newSettings = { ...settings, ...updates };
             const result = await saveSettings(updates);
-            setSettings(result.settings || newSettings);
 
-            if (updates.theme) {
-                applyTheme(updates.theme);
+            if (result.settings) {
+                console.log('✓ Settings guardados:', result.settings);
+                setSettings(result.settings);
+
+                if (updates.theme) {
+                    applyTheme(updates.theme);
+                }
+            } else {
+                console.log('✓ Aplicando cambios locales:', newSettings);
+                setSettings(newSettings);
+
+                if (updates.theme) {
+                    applyTheme(updates.theme);
+                }
             }
             return true;
         } catch (err) {
-            console.error('Error updating settings:', err);
+            console.error('❌ Error updating settings:', err);
             return false;
         }
     };

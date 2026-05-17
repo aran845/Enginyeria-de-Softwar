@@ -56,14 +56,15 @@ def send_daily_notifications():
                         send_renewal_today(user, [sub])
                         log_notification(user_id, sub['id'], 'renewal_today')
 
-        # Recordatorios de Renovación (7 días)
+        # Recordatorios de Renovación (7 días o menos - CADA DÍA)
         if settings.get('renewal_alerts'):
             reminder_subs = get_reminders_7days(user_id)
             if reminder_subs:
+                # Enviar recordatorio CADA DÍA para cada suscripción (no solo una vez)
+                send_renewal_reminder_7days(user, reminder_subs)
                 for sub in reminder_subs:
-                    if not check_notification_sent(user_id, sub['id'], 'reminder_7days'):
-                        send_renewal_reminder_7days(user, [sub])
-                        log_notification(user_id, sub['id'], 'reminder_7days')
+                    # Log cada recordatorio diario
+                    log_notification(user_id, sub['id'], 'reminder_7days')
 
         # Reporte Mensual (si está habilitado)
         if settings.get('monthly_report'):
@@ -86,6 +87,12 @@ scheduler.add_job(
 )
 
 atexit.register(lambda: scheduler.shutdown())
+
+# Prevent duplicate scheduler starts in Flask debug mode
+import os
+if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not os.environ.get('WERKZEUG_RUN_MAIN'):
+    # Only one scheduler should run
+    pass
 
 
 # ─── Helpers ────────────────────────────────────────────────────
@@ -380,6 +387,12 @@ def api_trigger_notifications():
 if __name__ == '__main__':
     init_db()
     seed_test_user()
-    scheduler.start()
-    print("✓ APScheduler iniciado - Notificaciones diarias a las 09:00")
+
+    # Start scheduler only in main process (not in reloader)
+    import os
+    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+        if not scheduler.running:
+            scheduler.start()
+            print("✓ APScheduler iniciado - Notificaciones diarias a las 09:00")
+
     app.run(debug=True, port=5000)
