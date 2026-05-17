@@ -106,19 +106,23 @@ def init_db():
     ''')
 
     # Migración: Añadir columnas faltantes en user_settings
-    if not column_exists(cursor, 'user_settings', 'theme'):
-        try:
+    try:
+        if not column_exists(cursor, 'user_settings', 'theme'):
             cursor.execute('ALTER TABLE user_settings ADD COLUMN theme VARCHAR(20) DEFAULT "dark"')
+            conn.commit()
             print("✓ Columna 'theme' añadida a user_settings")
-        except Exception as e:
-            print(f"⚠ No se pudo añadir columna 'theme': {e}")
+    except Exception as e:
+        print(f"⚠ No se pudo añadir columna 'theme': {e}")
+        conn.rollback()
 
-    if not column_exists(cursor, 'user_settings', 'currency'):
-        try:
+    try:
+        if not column_exists(cursor, 'user_settings', 'currency'):
             cursor.execute('ALTER TABLE user_settings ADD COLUMN currency VARCHAR(10) DEFAULT "EUR"')
+            conn.commit()
             print("✓ Columna 'currency' añadida a user_settings")
-        except Exception as e:
-            print(f"⚠ No se pudo añadir columna 'currency': {e}")
+    except Exception as e:
+        print(f"⚠ No se pudo añadir columna 'currency': {e}")
+        conn.rollback()
 
     conn.commit()
     cursor.close()

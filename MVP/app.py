@@ -24,7 +24,7 @@ import atexit
 # Cargar variables de entorno
 load_dotenv()
 
-from email_service import send_renewal_alert, send_monthly_report, send_budget_alert, send_renewal_today, send_renewal_reminder_7days
+from email_service import send_renewal_alert, send_monthly_report, send_budget_alert, send_renewal_today, send_renewal_reminder_7days, send_weekly_reminder
 
 app = Flask(__name__)
 app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'subly-secret-key-dev-2024')
@@ -47,7 +47,7 @@ def send_daily_notifications():
         if not settings.get('email_notifications'):
             continue
 
-        # Notificaciones de Renovación Hoy
+        # 1. Notificación de Renovación Hoy (email individual)
         if settings.get('renewal_alerts'):
             today_renewals = get_renewals_today(user_id)
             if today_renewals:
@@ -56,17 +56,16 @@ def send_daily_notifications():
                         send_renewal_today(user, [sub])
                         log_notification(user_id, sub['id'], 'renewal_today')
 
-        # Recordatorios de Renovación (7 días o menos - CADA DÍA)
+        # 2. Recordatorio Semanal (email grupal con todas las renovaciones en 7 días)
         if settings.get('renewal_alerts'):
-            reminder_subs = get_reminders_7days(user_id)
-            if reminder_subs:
-                # Enviar recordatorio CADA DÍA para cada suscripción (no solo una vez)
-                send_renewal_reminder_7days(user, reminder_subs)
-                for sub in reminder_subs:
-                    # Log cada recordatorio diario
-                    log_notification(user_id, sub['id'], 'reminder_7days')
+            upcoming_subs = get_upcoming_renewals(user_id, days=7)
+            if upcoming_subs:
+                # Verificar si ya se envió un email grupal hoy
+                if not check_notification_sent(user_id, 0, 'weekly_reminder'):
+                    send_weekly_reminder(user, upcoming_subs)
+                    log_notification(user_id, 0, 'weekly_reminder')
 
-        # Reporte Mensual (si está habilitado)
+        # 3. Reporte Mensual
         if settings.get('monthly_report'):
             today = datetime.now()
             if today.day == 1:
@@ -229,14 +228,15 @@ def api_add_subscription():
         color=data.get('color', '#6366f1')
     )
 
-    # Si se excedió el presupuesto, el usuario debió confirmar en el frontend. Enviamos alerta.
+    # Si se excedió el presupuesto, enviar alerta automáticamente
     if budget_result['exceeded'] and settings.get('email_notifications') and settings.get('budget_alert'):
         user = get_user_by_id(user_id)
         currency_symbol = '€' if settings.get('currency') == 'EUR' else ('$' if settings.get('currency') == 'USD' else '£')
-        diff_str = f"{currency_symbol}{budget_result['difference']}"
+        diff_str = f"{currency_symbol}{budget_result['difference']:.2f}"
+        print(f"📧 Enviando alerta de presupuesto a {user['email']}")
         send_budget_alert(user, data['service_name'], diff_str)
 
-    return jsonify({'success': True, 'id': sub_id}), 201
+    return jsonify({'success': True, 'id': sub_id, 'budget_exceeded': budget_result['exceeded']}), 201
 
 
 @app.route('/api/subscriptions/<int:sub_id>', methods=['GET'])
@@ -346,35 +346,27 @@ def api_trigger_notifications():
                 if not check_notification_sent(user_id, sub['id'], 'renewal_today'):
                     send_renewal_today(user, [sub])
                     log_notification(user_id, sub['id'], 'renewal_today')
-            messages.append(f"Notificaciones de renovación hoy enviadas ({len(today_renewals)} subs).")
+            messages.append(f"✓ Notificaciones de renovación hoy enviadas ({len(today_renewals)} subs).")
 
-    # 2. Recordatorios de Renovación (7 días)
+    # 2. Recordatorio Semanal (todas las renovaciones en 7 días)
     if settings.get('renewal_alerts'):
-        reminder_subs = get_reminders_7days(user_id)
-        if reminder_subs:
-            for sub in reminder_subs:
-                if not check_notification_sent(user_id, sub['id'], 'reminder_7days'):
-                    send_renewal_reminder_7days(user, [sub])
-                    log_notification(user_id, sub['id'], 'reminder_7days')
-            messages.append(f"Recordatorios de renovación enviados ({len(reminder_subs)} subs).")
+        upcoming_subs = get_upcoming_renewals(user_id, days=7)
+        if upcoming_subs:
+            if not check_notification_sent(user_id, 0, 'weekly_reminder'):
+                send_weekly_reminder(user, upcoming_subs)
+                log_notification(user_id, 0, 'weekly_reminder')
+            messages.append(f"✓ Recordatorio semanal enviado ({len(upcoming_subs)} suscripciones próximas).")
 
-    # 3. Alertas de Renovación (próximas 7 días)
-    if settings.get('renewal_alerts'):
-        upcoming = get_upcoming_renewals(user_id, days=7)
-        if upcoming:
-            send_renewal_alert(user, upcoming)
-            messages.append(f"Alerta de renovación próxima enviada ({len(upcoming)} subs).")
-
-    # 4. Reporte Mensual
+    # 3. Reporte Mensual
     if settings.get('monthly_report'):
         active_subs = [s for s in get_subscriptions(user_id) if s['is_active']]
         monthly_total = get_monthly_total(user_id)
-        
+
         currency_symbol = '€' if settings.get('currency') == 'EUR' else ('$' if settings.get('currency') == 'USD' else '£')
         total_str = f"{currency_symbol}{monthly_total}"
 
         send_monthly_report(user, total_str, active_subs)
-        messages.append("Reporte mensual enviado.")
+        messages.append("✓ Reporte mensual enviado.")
 
     if not messages:
         messages.append("No hay notificaciones pendientes por enviar (sin renovaciones y/o configuración desactivada).")

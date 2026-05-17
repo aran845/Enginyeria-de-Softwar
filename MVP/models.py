@@ -225,18 +225,18 @@ def save_user_settings(user_id, **kwargs):
     conn = get_db()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT id FROM user_settings WHERE user_id = %s', (user_id,))
-    exists = cursor.fetchone()
-
-    allowed = ['email_notifications', 'renewal_alerts', 'monthly_report', 'budget_alert', 'budget_limit', 'currency', 'theme']
-    fields = {k: v for k, v in kwargs.items() if k in allowed}
-
-    if not fields:
-        cursor.close()
-        conn.close()
-        return True
-
     try:
+        cursor.execute('SELECT id FROM user_settings WHERE user_id = %s', (user_id,))
+        exists = cursor.fetchone()
+
+        allowed = ['email_notifications', 'renewal_alerts', 'monthly_report', 'budget_alert', 'budget_limit', 'currency', 'theme']
+        fields = {k: v for k, v in kwargs.items() if k in allowed}
+
+        if not fields:
+            cursor.close()
+            conn.close()
+            return True
+
         if exists:
             set_clause = ', '.join(f'{k} = %s' for k in fields)
             values = list(fields.values()) + [user_id]
@@ -252,6 +252,7 @@ def save_user_settings(user_id, **kwargs):
             print(f"📝 SQL INSERT: {sql}")
             print(f"   Valores: {list(fields.values())}")
             cursor.execute(sql, list(fields.values()))
+
         conn.commit()
         print(f"✓ Guardado exitosamente")
         return True
@@ -259,6 +260,7 @@ def save_user_settings(user_id, **kwargs):
         print(f"❌ ERROR CRITICAL en save_user_settings: {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
+        conn.rollback()
         return False
     finally:
         cursor.close()

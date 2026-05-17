@@ -73,7 +73,48 @@ def send_renewal_today(user, today_subs):
     
     send_email(user['email'], subject, html)
 
-def send_renewal_reminder_7days(user, reminder_subs):
+def send_weekly_reminder(user, upcoming_subs):
+    """Envía un email grupal con todas las renovaciones en los próximos 7 días."""
+    if not upcoming_subs:
+        return
+
+    subject = "📋 Subly: Renovaciones Próximas (Próximos 7 días)"
+
+    html = f"<h2>Hola {user['name']},</h2>"
+    html += "<p>Aquí tienes un resumen de tus próximas renovaciones en los siguientes <strong>7 días</strong>:</p>"
+    html += "<table style='width: 100%; border-collapse: collapse; margin: 20px 0;'>"
+    html += "<tr style='background-color: #f5f5f5; border-bottom: 2px solid #ddd;'>"
+    html += "<th style='padding: 10px; text-align: left;'><strong>Servicio</strong></th>"
+    html += "<th style='padding: 10px; text-align: left;'><strong>Precio</strong></th>"
+    html += "<th style='padding: 10px; text-align: left;'><strong>Fecha</strong></th>"
+    html += "<th style='padding: 10px; text-align: center;'><strong>Días Restantes</strong></th>"
+    html += "</tr>"
+
+    today = datetime.now().date()
+    for sub in upcoming_subs:
+        renewal_date = sub['next_renewal']
+        days_remaining = (renewal_date - today).days
+
+        html += "<tr style='border-bottom: 1px solid #eee;'>"
+        html += f"<td style='padding: 10px;'><strong>{sub['service_name']}</strong></td>"
+        html += f"<td style='padding: 10px;'>{sub['price']} ({sub['billing_cycle']})</td>"
+        html += f"<td style='padding: 10px;'>{renewal_date}</td>"
+
+        if days_remaining == 0:
+            html += f"<td style='padding: 10px; text-align: center; color: #dc2626;'><strong>¡HOY!</strong></td>"
+        elif days_remaining == 1:
+            html += f"<td style='padding: 10px; text-align: center; color: #ea580c;'><strong>Mañana</strong></td>"
+        else:
+            html += f"<td style='padding: 10px; text-align: center; color: #16a34a;'><strong>{days_remaining} días</strong></td>"
+
+        html += "</tr>"
+
+    html += "</table>"
+    html += "<p style='color: #666; font-size: 0.9em;'>Si necesitas cancelar o modificar alguna suscripción, ahora es un buen momento.</p>"
+
+    send_email(user['email'], subject, html)
+
+
     """Envía recordatorios diarios de renovaciones en los próximos 7 días."""
     if not reminder_subs:
         return
