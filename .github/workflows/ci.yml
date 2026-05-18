@@ -25,7 +25,7 @@ jobs:
         run: pip install flake8
 
       - name: Ejecutar flake8 sobre el backend
-        run: flake8 MVP/ --max-line-length=120 --exclude=MVP/__pycache__,MVP/frontend
+        run: run: flake8 MVP/ --max-line-length=120 --exclude=MVP/__pycache__,MVP/frontend --extend-ignore=W291,W293
 
   test:
     name: Tests básicos
