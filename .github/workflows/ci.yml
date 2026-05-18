@@ -9,27 +9,40 @@ permissions:
 
 jobs:
   lint:
-    name: Basic file check
+    name: Lint (comprobar estilo del código)
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Descargar el código
         uses: actions/checkout@v4
 
-      - name: List project files
-        run: ls -la
+      - name: Instalar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-      - name: Check repository structure
-        run: echo "Repository structure checked successfully."
+      - name: Instalar flake8
+        run: pip install flake8
+
+      - name: Ejecutar flake8 sobre el backend
+        run: flake8 MVP/ --max-line-length=120 --exclude=MVP/__pycache__,MVP/frontend
 
   test:
-    name: Basic test check
+    name: Tests básicos
     runs-on: ubuntu-latest
     needs: lint
 
     steps:
-      - name: Checkout repository
+      - name: Descargar el código
         uses: actions/checkout@v4
 
-      - name: Run basic test placeholder
-        run: echo "Basic CI test executed successfully."
+      - name: Instalar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: pip install pytest flask flask-jwt-extended flask-cors python-dotenv bcrypt APScheduler mysql-connector-python
+
+      - name: Ejecutar tests
+        run: pytest MVP/tests/ -v
