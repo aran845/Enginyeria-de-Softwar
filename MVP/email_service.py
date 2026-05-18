@@ -15,8 +15,8 @@ def send_email(to_email, subject, html_content):
     sender = os.environ.get('MAIL_DEFAULT_SENDER')
 
     if not all([smtp_server, smtp_port, smtp_user, smtp_password, sender]):
-        print(f"⚠️ No se pudo enviar el correo a {to_email}. Faltan credenciales SMTP en el .env.")
-        print(f"   [SIMULACIÓN] Asunto: {subject}")
+        print(f"[WARNING] No se pudo enviar el correo a {to_email}. Faltan credenciales SMTP en el .env")
+        print(f"   [SIMULACION] Asunto: {subject}")
         return False
 
     msg = MIMEMultipart("alternative")
@@ -33,10 +33,10 @@ def send_email(to_email, subject, html_content):
         server.login(smtp_user, smtp_password)
         server.sendmail(sender, to_email, msg.as_string())
         server.quit()
-        print(f"✅ Correo enviado exitosamente a {to_email} ({subject})")
+        print(f"[OK] Correo enviado a {to_email} ({subject})")
         return True
     except Exception as e:
-        print(f"❌ Error enviando correo a {to_email}: {e}")
+        print(f"[ERROR] Error enviando correo a {to_email}: {e}")
         return False
 
 def send_renewal_alert(user, upcoming_subs):

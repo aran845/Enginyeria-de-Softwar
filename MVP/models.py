@@ -258,7 +258,7 @@ def save_user_settings(user_id, **kwargs):
             set_clause = ', '.join(f'{k} = %s' for k in fields)
             values = list(fields.values()) + [user_id]
             sql = f'UPDATE user_settings SET {set_clause} WHERE user_id = %s'
-            print(f"📝 SQL UPDATE: {sql}")
+            print(f"[SQL] UPDATE: {sql}")
             print(f"   Valores: {values}")
             cursor.execute(sql, values)
         else:
@@ -266,15 +266,15 @@ def save_user_settings(user_id, **kwargs):
             cols = ', '.join(fields.keys())
             vals = ', '.join(['%s'] * len(fields))
             sql = f'INSERT INTO user_settings ({cols}) VALUES ({vals})'
-            print(f"📝 SQL INSERT: {sql}")
+            print(f"[SQL] INSERT: {sql}")
             print(f"   Valores: {list(fields.values())}")
             cursor.execute(sql, list(fields.values()))
 
         conn.commit()
-        print(f"✓ Guardado exitosamente")
+        print(f"[OK] Guardado exitosamente")
         return True
     except Exception as e:
-        print(f"❌ ERROR CRITICAL en save_user_settings: {type(e).__name__}: {e}")
+        print(f"[ERROR CRITICAL] en save_user_settings: {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
         conn.rollback()

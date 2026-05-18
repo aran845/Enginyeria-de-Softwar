@@ -38,6 +38,7 @@ jwt = JWTManager(app)
 def send_daily_notifications():
     """Envía notificaciones automáticas para todos los usuarios."""
     from models import get_all_users
+    print(f"[{datetime.now()}] [INFO] Iniciando envío automático de notificaciones...")
 
     users = get_all_users()
     for user in users:
@@ -60,12 +61,11 @@ def send_daily_notifications():
         if settings.get('renewal_alerts'):
             upcoming_subs = get_upcoming_renewals(user_id, days=7)
             if upcoming_subs:
-                # Verificar si ya se envió un email grupal hoy
                 if not check_notification_sent(user_id, 0, 'weekly_reminder'):
                     send_weekly_reminder(user, upcoming_subs)
                     log_notification(user_id, 0, 'weekly_reminder')
 
-        # 3. Reporte Mensual
+        # 3. Reporte Mensual (solo el 1 de cada mes)
         if settings.get('monthly_report'):
             today = datetime.now()
             if today.day == 1:
@@ -76,22 +76,25 @@ def send_daily_notifications():
                 send_monthly_report(user, total_str, active_subs)
 
 
-scheduler = BackgroundScheduler()
-scheduler.add_job(
-    func=send_daily_notifications,
-    trigger=CronTrigger(hour=9, minute=0),
-    id='send_daily_notifications',
-    name='Send daily notifications to users',
-    replace_existing=True
-)
+scheduler = BackgroundScheduler(daemon=True)
 
-atexit.register(lambda: scheduler.shutdown())
+def init_scheduler():
+    """Inicializa el scheduler solo en el proceso principal."""
+    if scheduler.running:
+        return
 
-# Prevent duplicate scheduler starts in Flask debug mode
-import os
-if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not os.environ.get('WERKZEUG_RUN_MAIN'):
-    # Only one scheduler should run
-    pass
+    scheduler.add_job(
+        func=send_daily_notifications,
+        trigger=CronTrigger(hour=9, minute=0),
+        id='send_daily_notifications',
+        name='Send daily notifications to users',
+        replace_existing=True
+    )
+    scheduler.start()
+    print("[OK] APScheduler iniciado - Notificaciones diarias a las 09:00 (UTC)")
+
+
+atexit.register(lambda: scheduler.shutdown(wait=False))
 
 
 # ─── Helpers ────────────────────────────────────────────────────
@@ -233,7 +236,7 @@ def api_add_subscription():
         user = get_user_by_id(user_id)
         currency_symbol = '€' if settings.get('currency') == 'EUR' else ('$' if settings.get('currency') == 'USD' else '£')
         diff_str = f"{currency_symbol}{budget_result['difference']:.2f}"
-        print(f"📧 Enviando alerta de presupuesto a {user['email']}")
+        print(f"[INFO] Enviando alerta de presupuesto a {user['email']}")
         send_budget_alert(user, data['service_name'], diff_str)
 
     return jsonify({'success': True, 'id': sub_id, 'budget_exceeded': budget_result['exceeded']}), 201
@@ -306,10 +309,10 @@ def api_save_settings():
     success = save_user_settings(user_id, **data)
     if success:
         result = get_user_settings(user_id)
-        print(f"✓ Guardado exitosamente: {result}")
+    print(f"[OK] Guardado exitosamente: {result}")
         return jsonify({'success': True, 'settings': result})
     else:
-        print(f"❌ Error guardando settings")
+        print(f"[ERROR] Error guardando settings")
         return jsonify({'error': 'Error al guardar configuración'}), 400
 
 
@@ -352,7 +355,7 @@ def api_trigger_notifications():
                 if not check_notification_sent(user_id, sub['id'], 'renewal_today'):
                     send_renewal_today(user, [sub])
                     log_notification(user_id, sub['id'], 'renewal_today')
-            messages.append(f"✓ Notificaciones de renovación hoy enviadas ({len(today_renewals)} subs).")
+            messages.append(f"[OK] Notificaciones de renovación hoy enviadas ({len(today_renewals)} subs).")
 
     # 2. Recordatorio Semanal (todas las renovaciones en 7 días)
     if settings.get('renewal_alerts'):
@@ -361,7 +364,7 @@ def api_trigger_notifications():
             if not check_notification_sent(user_id, 0, 'weekly_reminder'):
                 send_weekly_reminder(user, upcoming_subs)
                 log_notification(user_id, 0, 'weekly_reminder')
-            messages.append(f"✓ Recordatorio semanal enviado ({len(upcoming_subs)} suscripciones próximas).")
+            messages.append(f"[OK] Recordatorio semanal enviado ({len(upcoming_subs)} suscripciones próximas).")
 
     # 3. Reporte Mensual
     if settings.get('monthly_report'):
@@ -372,12 +375,23 @@ def api_trigger_notifications():
         total_str = f"{currency_symbol}{monthly_total}"
 
         send_monthly_report(user, total_str, active_subs)
-        messages.append("✓ Reporte mensual enviado.")
+        messages.append("[OK] Reporte mensual enviado.")
 
     if not messages:
         messages.append("No hay notificaciones pendientes por enviar (sin renovaciones y/o configuración desactivada).")
 
     return jsonify({'success': True, 'messages': messages})
+
+
+@app.route('/api/scheduler-status', methods=['GET'])
+def scheduler_status():
+    """Verifica el estado del scheduler."""
+    next_job = scheduler.get_job('send_daily_notifications')
+    return jsonify({
+        'scheduler_running': scheduler.running,
+        'jobs': [{'id': job.id, 'name': job.name} for job in scheduler.get_jobs()],
+        'next_run': str(next_job.next_run_time) if next_job else None
+    })
 
 
 # ─── MAIN ────────────────────────────────────────────────────────
@@ -386,11 +400,8 @@ if __name__ == '__main__':
     init_db()
     seed_test_user()
 
-    # Start scheduler only in main process (not in reloader)
     import os
     if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
-        if not scheduler.running:
-            scheduler.start()
-            print("✓ APScheduler iniciado - Notificaciones diarias a las 09:00")
+        init_scheduler()
 
     app.run(debug=True, port=5000)
