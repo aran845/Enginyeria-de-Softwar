@@ -85,7 +85,7 @@ def init_scheduler():
 
     scheduler.add_job(
         func=send_daily_notifications,
-        trigger=CronTrigger(hour=9, minute=0),
+        trigger=CronTrigger(hour=9, minute=00),
         id='send_daily_notifications',
         name='Send daily notifications to users',
         replace_existing=True
@@ -305,11 +305,11 @@ def api_save_settings():
     data.pop('created_at', None)
     data.pop('updated_at', None)
 
-    print(f"📝 Guardando settings para usuario {user_id}: {data}")
+    print(f"[INFO] Guardando settings para usuario {user_id}: {data}")
     success = save_user_settings(user_id, **data)
     if success:
         result = get_user_settings(user_id)
-    print(f"[OK] Guardado exitosamente: {result}")
+        print(f"[OK] Guardado exitosamente: {result}")
         return jsonify({'success': True, 'settings': result})
     else:
         print(f"[ERROR] Error guardando settings")
@@ -392,6 +392,20 @@ def scheduler_status():
         'jobs': [{'id': job.id, 'name': job.name} for job in scheduler.get_jobs()],
         'next_run': str(next_job.next_run_time) if next_job else None
     })
+
+
+@app.route('/api/cron/send-notifications', methods=['POST'])
+def cron_send_notifications():
+    """Endpoint para ejecutar desde un servicio de cron externo (con autenticación por secret key)."""
+    secret_key = request.headers.get('X-Cron-Secret')
+    expected_key = os.environ.get('CRON_SECRET_KEY', 'subly-cron-secret-key-2024')
+
+    if not secret_key or secret_key != expected_key:
+        return jsonify({'error': 'Acceso denegado'}), 401
+
+    print(f"[{datetime.now()}] [INFO] Cron job ejecutado - Enviando notificaciones a todos los usuarios...")
+    send_daily_notifications()
+    return jsonify({'success': True, 'message': 'Notificaciones enviadas'}), 200
 
 
 # ─── MAIN ────────────────────────────────────────────────────────
