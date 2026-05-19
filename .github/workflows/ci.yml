@@ -4,32 +4,26 @@ on:
   push:
   pull_request:
 
-permissions:
-  contents: read
-
 jobs:
   lint:
-    name: Basic file check
+    name: Lint
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: List project files
-        run: ls -la
-
-      - name: Check repository structure
-        run: echo "Repository structure checked successfully."
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install flake8
+      - run: flake8 MVP/ --max-line-length=120 --exclude=MVP/__pycache__,MVP/frontend,MVP/tests --extend-ignore=W291,W293
 
   test:
-    name: Basic test check
+    name: Tests
     runs-on: ubuntu-latest
     needs: lint
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Run basic test placeholder
-        run: echo "Basic CI test executed successfully."
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest flask flask-jwt-extended flask-cors python-dotenv bcrypt APScheduler mysql-connector-python
+      - run: pytest MVP/tests/ -v
