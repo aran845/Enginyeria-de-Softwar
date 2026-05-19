@@ -88,3 +88,42 @@ export async function deleteSubscriptionApi(id) {
     if (!res.ok) throw new Error('Error al eliminar');
     return res.json();
 }
+
+// ─── Settings ──────────────────────────────────────────────
+
+export async function getSettings() {
+    const res = await fetch(`${API_BASE}/settings`, { headers: authHeaders() });
+    if (!res.ok) throw new Error('Error al obtener configuración');
+    return res.json();
+}
+
+export async function saveSettings(data) {
+    const res = await fetch(`${API_BASE}/settings`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify(data)
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Error al guardar');
+    return result;
+}
+
+export async function checkBudget(price, billing_cycle = 'monthly') {
+    const res = await fetch(`${API_BASE}/check-budget`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ price, billing_cycle })
+    });
+    if (!res.ok) throw new Error('Error al validar presupuesto');
+    return res.json();
+}
+
+export async function triggerNotifications() {
+    const res = await fetch(`${API_BASE}/trigger-notifications`, {
+        method: 'POST',
+        headers: authHeaders()
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Error al enviar notificaciones');
+    return result;
+}

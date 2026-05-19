@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { checkBudget } from '../api/api';
+import { useSettings } from '../context/SettingsContext';
 
 const QUICK_SERVICES = [
     { name: 'Netflix', icon: '🎬', color: '#e50914', category: 'streaming', price: 12.99 },
@@ -11,7 +13,8 @@ const QUICK_SERVICES = [
     { name: 'Xbox Game Pass', icon: '🎮', color: '#107c10', category: 'gaming', price: 12.99 },
 ];
 
-export default function SubModal({ isOpen, onClose, onSave, editData }) {
+export default function SubModal({ isOpen, onClose, onSave, editData, onBudgetWarning }) {
+    const { settings, getCurrencySymbol } = useSettings();
     const [form, setForm] = useState({
         service_name: '',
         icon: '📦',
@@ -64,8 +67,30 @@ export default function SubModal({ isOpen, onClose, onSave, editData }) {
         });
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
+
+        // Si estamos editando, no validar presupuesto
+        if (isEdit) {
+            onSave({ ...form, price: parseFloat(form.price) });
+            return;
+        }
+
+        // Si estamos creando y budget_alert está activado, verificar
+        if (!isEdit && settings.budget_alert) {
+            try {
+                const budgetResult = await checkBudget(parseFloat(form.price), form.billing_cycle);
+                if (budgetResult.exceeded) {
+                    onBudgetWarning?.(budgetResult, () => {
+                        onSave({ ...form, price: parseFloat(form.price) });
+                    });
+                    return;
+                }
+            } catch (err) {
+                console.error('Error checking budget:', err);
+            }
+        }
+
         onSave({ ...form, price: parseFloat(form.price) });
     };
 
@@ -120,7 +145,7 @@ export default function SubModal({ isOpen, onClose, onSave, editData }) {
                     </div>
                     <div className="form-row">
                         <div className="form-group flex-1">
-                            <label htmlFor="price">Precio (€)</label>
+                            <label htmlFor="price">Precio ({getCurrencySymbol()})</label>
                             <input type="number" id="price" name="price" placeholder="9.99" step="0.01" min="0" required value={form.price} onChange={handleChange} />
                         </div>
                         <div className="form-group flex-1">

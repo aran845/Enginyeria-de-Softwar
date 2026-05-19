@@ -53,6 +53,17 @@ def get_user_by_id(user_id):
     return user
 
 
+def get_all_users():
+    """Obtiene todos los usuarios (para procesos automatizados)."""
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute('SELECT id, name, email FROM users ORDER BY id')
+    users = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return users
+
+
 # ─── SUBSCRIPTIONS ──────────────────────────────────────────────
 
 def get_subscriptions(user_id):
@@ -183,3 +194,191 @@ def get_yearly_total(user_id):
             elif s['billing_cycle'] == 'yearly':
                 total += price
     return round(total, 2)
+
+
+# ─── USER SETTINGS ──────────────────────────────────────────
+
+def get_user_settings(user_id):
+    """Obtiene la configuración del usuario."""
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute('SELECT * FROM user_settings WHERE user_id = %s', (user_id,))
+    settings = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if not settings:
+        return {
+            'email_notifications': True,
+            'renewal_alerts': True,
+            'monthly_report': False,
+            'budget_alert': True,
+            'budget_limit': 100.0,
+            'currency': 'EUR',
+            'theme': 'dark'
+        }
+    return settings
+
+
+def save_user_settings(user_id, **kwargs):
+    """Guarda la configuración del usuario."""
+    conn = get_db()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('SELECT id FROM user_settings WHERE user_id = %s', (user_id,))
+        exists = cursor.fetchone()
+
+        allowed = ['email_notifications', 'renewal_alerts', 'monthly_report', 'budget_alert', 'budget_limit', 'currency', 'theme']
+        raw_fields = {k: v for k, v in kwargs.items() if k in allowed}
+
+        if not raw_fields:
+            cursor.close()
+            conn.close()
+            return True
+
+        # Normalize/coerce types before saving to DB to avoid connector errors
+        fields = {}
+        for k, v in raw_fields.items():
+            if k in ['email_notifications', 'renewal_alerts', 'monthly_report', 'budget_alert']:
+                # MySQL TINYINT(1) - store as 0/1
+                fields[k] = 1 if bool(v) else 0
+            elif k == 'budget_limit':
+                try:
+                    fields[k] = float(v)
+                except (ValueError, TypeError):
+                    fields[k] = 0.0
+            elif k in ['currency', 'theme']:
+                # Ensure string and length limits
+                fields[k] = (str(v) if v is not None else '')[:20]
+            else:
+                fields[k] = v
+
+        if exists:
+            set_clause = ', '.join(f'{k} = %s' for k in fields)
+            values = list(fields.values()) + [user_id]
+            sql = f'UPDATE user_settings SET {set_clause} WHERE user_id = %s'
+            print(f"📝 SQL UPDATE: {sql}")
+            print(f"   Valores: {values}")
+            cursor.execute(sql, values)
+        else:
+            fields['user_id'] = user_id
+            cols = ', '.join(fields.keys())
+            vals = ', '.join(['%s'] * len(fields))
+            sql = f'INSERT INTO user_settings ({cols}) VALUES ({vals})'
+            print(f"📝 SQL INSERT: {sql}")
+            print(f"   Valores: {list(fields.values())}")
+            cursor.execute(sql, list(fields.values()))
+
+        conn.commit()
+        print(f"✓ Guardado exitosamente")
+        return True
+    except Exception as e:
+        print(f"❌ ERROR CRITICAL en save_user_settings: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        conn.rollback()
+        return False
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def check_budget_exceeded(user_id, new_price, billing_cycle='monthly'):
+    """Verifica si agregar una suscripción excedería el presupuesto."""
+    settings = get_user_settings(user_id)
+    budget_limit = float(settings.get('budget_limit', 100))
+
+    current_monthly = get_monthly_total(user_id)
+
+    new_monthly_cost = float(new_price)
+    if billing_cycle == 'yearly':
+        new_monthly_cost = new_monthly_cost / 12
+
+    total_after = current_monthly + new_monthly_cost
+
+    return {
+        'exceeded': total_after > budget_limit,
+        'current': round(current_monthly, 2),
+        'new_total': round(total_after, 2),
+        'budget_limit': budget_limit,
+        'difference': round(total_after - budget_limit, 2)
+    }
+
+
+def get_renewals_today(user_id):
+    """Obtiene suscripciones que se renuevan hoy."""
+    today = datetime.now().strftime('%Y-%m-%d')
+    
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        '''SELECT * FROM subscriptions 
+           WHERE user_id = %s AND is_active = 1 
+           AND next_renewal = %s
+           ORDER BY next_renewal ASC''',
+        (user_id, today)
+    )
+    subs = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return subs
+
+
+def get_reminders_7days(user_id):
+    """Obtiene suscripciones que se renuevan en 7 días o menos."""
+    today = datetime.now().strftime('%Y-%m-%d')
+    deadline = (datetime.now() + timedelta(days=7)).strftime('%Y-%m-%d')
+    tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+    
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        '''SELECT * FROM subscriptions 
+           WHERE user_id = %s AND is_active = 1 
+           AND next_renewal BETWEEN %s AND %s
+           ORDER BY next_renewal ASC''',
+        (user_id, tomorrow, deadline)
+    )
+    subs = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return subs
+
+
+def check_notification_sent(user_id, sub_id, notification_type):
+    """Verifica si una notificación ya fue enviada hoy para esta suscripción."""
+    today = datetime.now().strftime('%Y-%m-%d')
+    
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        '''SELECT id FROM notification_log 
+           WHERE user_id = %s AND subscription_id = %s 
+           AND notification_type = %s AND sent_date = %s''',
+        (user_id, sub_id, notification_type, today)
+    )
+    result = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return result is not None
+
+
+def log_notification(user_id, sub_id, notification_type):
+    """Registra que una notificación fue enviada."""
+    today = datetime.now().strftime('%Y-%m-%d')
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            '''INSERT INTO notification_log (user_id, subscription_id, notification_type, sent_date) 
+               VALUES (%s, %s, %s, %s)''',
+            (user_id, sub_id, notification_type, today)
+        )
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        cursor.close()
+        conn.close()

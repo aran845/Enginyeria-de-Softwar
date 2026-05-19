@@ -1,27 +1,35 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getDashboard, createSubscription, getSubscription, updateSubscription, deleteSubscriptionApi } from '../api/api';
 import { useAuth } from '../context/AuthContext';
+import { useSettings } from '../context/SettingsContext';
 import Sidebar from '../components/Sidebar';
 import StatsGrid from '../components/StatsGrid';
 import SubCard from '../components/SubCard';
 import SubModal from '../components/SubModal';
 import DeleteModal from '../components/DeleteModal';
+import BudgetAlertModal from '../components/BudgetAlertModal';
+import SearchFilter from '../components/SearchFilter';
 
 export default function DashboardPage() {
     const { user } = useAuth();
+    const { settings } = useSettings();
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [filteredSubs, setFilteredSubs] = useState([]);
 
     // Modal states
     const [modalOpen, setModalOpen] = useState(false);
     const [editData, setEditData] = useState(null);
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState({ id: null, name: '' });
+    const [budgetWarning, setBudgetWarning] = useState(null);
+    const [pendingSave, setPendingSave] = useState(null);
 
     const loadDashboard = useCallback(async () => {
         try {
             const result = await getDashboard();
             setData(result);
+            setFilteredSubs(result.subscriptions || []);
         } catch (err) {
             console.error('Error loading dashboard:', err);
         } finally {
@@ -39,6 +47,7 @@ export default function DashboardPage() {
             if (e.key === 'Escape') {
                 setModalOpen(false);
                 setDeleteOpen(false);
+                setBudgetWarning(null);
             }
         };
         document.addEventListener('keydown', handleKey);
@@ -69,9 +78,30 @@ export default function DashboardPage() {
             }
             setModalOpen(false);
             setEditData(null);
+            setBudgetWarning(null);
+            setPendingSave(null);
             loadDashboard();
         } catch (err) {
             alert(err.message);
+        }
+    };
+
+    const handleBudgetWarning = (budgetData, onConfirm) => {
+        setBudgetWarning(budgetData);
+        setPendingSave(() => onConfirm);
+    };
+
+    const handleConfirmBudgetOverride = async () => {
+        if (!pendingSave) return;
+
+        setBudgetWarning(null);
+        setPendingSave(null);
+
+        try {
+            await pendingSave();
+        } catch (err) {
+            console.error('Error in budget override:', err);
+            alert('Error al guardar suscripción');
         }
     };
 
@@ -89,6 +119,10 @@ export default function DashboardPage() {
         } catch {
             alert('Error al eliminar');
         }
+    };
+
+    const handleFilter = (filtered) => {
+        setFilteredSubs(filtered);
     };
 
     if (loading) {
@@ -172,9 +206,17 @@ export default function DashboardPage() {
                     <h2>Mis Suscripciones</h2>
                 </div>
 
-                {data?.subscriptions?.length > 0 ? (
+                {/* Search & Filter */}
+                {(data?.subscriptions?.length || 0) > 0 && (
+                    <SearchFilter
+                        subscriptions={data?.subscriptions || []}
+                        onFilter={handleFilter}
+                    />
+                )}
+
+                {filteredSubs?.length > 0 ? (
                     <div className="subs-grid" id="subs-grid">
-                        {data.subscriptions.map((sub) => (
+                        {filteredSubs.map((sub) => (
                             <SubCard
                                 key={sub.id}
                                 sub={sub}
@@ -199,12 +241,19 @@ export default function DashboardPage() {
                 onClose={() => { setModalOpen(false); setEditData(null); }}
                 onSave={handleSave}
                 editData={editData}
+                onBudgetWarning={handleBudgetWarning}
             />
             <DeleteModal
                 isOpen={deleteOpen}
                 serviceName={deleteTarget.name}
                 onClose={() => setDeleteOpen(false)}
                 onConfirm={handleDeleteConfirm}
+            />
+            <BudgetAlertModal
+                isOpen={!!budgetWarning}
+                budgetData={budgetWarning}
+                onConfirm={handleConfirmBudgetOverride}
+                onCancel={() => setBudgetWarning(null)}
             />
         </div>
     );

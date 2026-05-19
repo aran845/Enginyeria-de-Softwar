@@ -10,10 +10,21 @@ from models import (
     create_user, authenticate_user, get_user_by_id,
     get_subscriptions, add_subscription, update_subscription,
     delete_subscription, get_subscription,
-    get_upcoming_renewals, get_monthly_total, get_yearly_total
+    get_upcoming_renewals, get_monthly_total, get_yearly_total,
+    get_user_settings, save_user_settings, check_budget_exceeded,
+    get_renewals_today, get_reminders_7days, check_notification_sent, log_notification
 )
-from datetime import timedelta
+from datetime import timedelta, datetime
 import os
+from dotenv import load_dotenv
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+import atexit
+
+# Cargar variables de entorno
+load_dotenv()
+
+from email_service import send_renewal_alert, send_monthly_report, send_budget_alert, send_renewal_today, send_renewal_reminder_7days, send_weekly_reminder
 
 app = Flask(__name__)
 app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'subly-secret-key-dev-2024')
@@ -21,6 +32,66 @@ app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)
 
 CORS(app, origins=['http://localhost:5173', 'http://127.0.0.1:5173'])
 jwt = JWTManager(app)
+
+
+# ─── Background Scheduler ────────────────────────────────────
+def send_daily_notifications():
+    """Envía notificaciones automáticas para todos los usuarios."""
+    from models import get_all_users
+
+    users = get_all_users()
+    for user in users:
+        user_id = user['id']
+        settings = get_user_settings(user_id)
+
+        if not settings.get('email_notifications'):
+            continue
+
+        # 1. Notificación de Renovación Hoy (email individual)
+        if settings.get('renewal_alerts'):
+            today_renewals = get_renewals_today(user_id)
+            if today_renewals:
+                for sub in today_renewals:
+                    if not check_notification_sent(user_id, sub['id'], 'renewal_today'):
+                        send_renewal_today(user, [sub])
+                        log_notification(user_id, sub['id'], 'renewal_today')
+
+        # 2. Recordatorio Semanal (email grupal con todas las renovaciones en 7 días)
+        if settings.get('renewal_alerts'):
+            upcoming_subs = get_upcoming_renewals(user_id, days=7)
+            if upcoming_subs:
+                # Verificar si ya se envió un email grupal hoy
+                if not check_notification_sent(user_id, 0, 'weekly_reminder'):
+                    send_weekly_reminder(user, upcoming_subs)
+                    log_notification(user_id, 0, 'weekly_reminder')
+
+        # 3. Reporte Mensual
+        if settings.get('monthly_report'):
+            today = datetime.now()
+            if today.day == 1:
+                active_subs = [s for s in get_subscriptions(user_id) if s['is_active']]
+                monthly_total = get_monthly_total(user_id)
+                currency_symbol = '€' if settings.get('currency') == 'EUR' else ('$' if settings.get('currency') == 'USD' else '£')
+                total_str = f"{currency_symbol}{monthly_total}"
+                send_monthly_report(user, total_str, active_subs)
+
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(
+    func=send_daily_notifications,
+    trigger=CronTrigger(hour=9, minute=0),
+    id='send_daily_notifications',
+    name='Send daily notifications to users',
+    replace_existing=True
+)
+
+atexit.register(lambda: scheduler.shutdown())
+
+# Prevent duplicate scheduler starts in Flask debug mode
+import os
+if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not os.environ.get('WERKZEUG_RUN_MAIN'):
+    # Only one scheduler should run
+    pass
 
 
 # ─── Helpers ────────────────────────────────────────────────────
@@ -136,10 +207,15 @@ def api_add_subscription():
     if not all(data.get(f) for f in required):
         return jsonify({'error': 'Faltan campos obligatorios'}), 400
 
+    price = 0.0
     try:
         price = float(data['price'])
     except (ValueError, TypeError):
         return jsonify({'error': 'Precio inválido'}), 400
+
+    # Comprobar límite de presupuesto ANTES de añadir (para enviar email)
+    settings = get_user_settings(user_id)
+    budget_result = check_budget_exceeded(user_id, price, data['billing_cycle'])
 
     sub_id = add_subscription(
         user_id=user_id,
@@ -152,7 +228,15 @@ def api_add_subscription():
         color=data.get('color', '#6366f1')
     )
 
-    return jsonify({'success': True, 'id': sub_id}), 201
+    # Si se excedió el presupuesto, enviar alerta automáticamente
+    if budget_result['exceeded'] and settings.get('email_notifications') and settings.get('budget_alert'):
+        user = get_user_by_id(user_id)
+        currency_symbol = '€' if settings.get('currency') == 'EUR' else ('$' if settings.get('currency') == 'USD' else '£')
+        diff_str = f"{currency_symbol}{budget_result['difference']:.2f}"
+        print(f"📧 Enviando alerta de presupuesto a {user['email']}")
+        send_budget_alert(user, data['service_name'], diff_str)
+
+    return jsonify({'success': True, 'id': sub_id, 'budget_exceeded': budget_result['exceeded']}), 201
 
 
 @app.route('/api/subscriptions/<int:sub_id>', methods=['GET'])
@@ -194,9 +278,119 @@ def api_delete_subscription(sub_id):
     return jsonify({'success': True})
 
 
+# ─── SETTINGS ENDPOINTS ────────────────────────────────────
+
+@app.route('/api/settings', methods=['GET'])
+@jwt_required()
+def api_get_settings():
+    """Obtener configuración del usuario."""
+    user_id = int(get_jwt_identity())
+    settings = get_user_settings(user_id)
+    return jsonify(settings)
+
+
+@app.route('/api/settings', methods=['PUT'])
+@jwt_required()
+def api_save_settings():
+    """Guardar configuración del usuario."""
+    user_id = int(get_jwt_identity())
+    data = request.get_json() or {}
+
+    # Evitar conflicto si el cliente incluye user_id u otros campos inmutables
+    data.pop('user_id', None)
+    data.pop('id', None)
+    data.pop('created_at', None)
+    data.pop('updated_at', None)
+
+    print(f"📝 Guardando settings para usuario {user_id}: {data}")
+    success = save_user_settings(user_id, **data)
+    if success:
+        result = get_user_settings(user_id)
+        print(f"✓ Guardado exitosamente: {result}")
+        return jsonify({'success': True, 'settings': result})
+    else:
+        print(f"❌ Error guardando settings")
+        return jsonify({'error': 'Error al guardar configuración'}), 400
+
+
+# ─── BUDGET VALIDATION ────────────────────────────────────
+
+@app.route('/api/check-budget', methods=['POST'])
+@jwt_required()
+def api_check_budget():
+    """Verifica si una nueva suscripción excede el presupuesto."""
+    user_id = int(get_jwt_identity())
+    data = request.get_json()
+
+    price = float(data.get('price', 0))
+    billing_cycle = data.get('billing_cycle', 'monthly')
+
+    result = check_budget_exceeded(user_id, price, billing_cycle)
+    return jsonify(result)
+
+
+# ─── CRON / NOTIFICATIONS TRIGGER ─────────────────────────────
+
+@app.route('/api/trigger-notifications', methods=['POST'])
+@jwt_required()
+def api_trigger_notifications():
+    """Endpoint manual para simular el cronjob de envío de emails."""
+    user_id = int(get_jwt_identity())
+    user = get_user_by_id(user_id)
+    settings = get_user_settings(user_id)
+
+    if not settings.get('email_notifications'):
+        return jsonify({'message': 'El usuario tiene desactivadas las notificaciones por email.'})
+
+    messages = []
+
+    # 1. Notificaciones de Renovación Hoy
+    if settings.get('renewal_alerts'):
+        today_renewals = get_renewals_today(user_id)
+        if today_renewals:
+            for sub in today_renewals:
+                if not check_notification_sent(user_id, sub['id'], 'renewal_today'):
+                    send_renewal_today(user, [sub])
+                    log_notification(user_id, sub['id'], 'renewal_today')
+            messages.append(f"✓ Notificaciones de renovación hoy enviadas ({len(today_renewals)} subs).")
+
+    # 2. Recordatorio Semanal (todas las renovaciones en 7 días)
+    if settings.get('renewal_alerts'):
+        upcoming_subs = get_upcoming_renewals(user_id, days=7)
+        if upcoming_subs:
+            if not check_notification_sent(user_id, 0, 'weekly_reminder'):
+                send_weekly_reminder(user, upcoming_subs)
+                log_notification(user_id, 0, 'weekly_reminder')
+            messages.append(f"✓ Recordatorio semanal enviado ({len(upcoming_subs)} suscripciones próximas).")
+
+    # 3. Reporte Mensual
+    if settings.get('monthly_report'):
+        active_subs = [s for s in get_subscriptions(user_id) if s['is_active']]
+        monthly_total = get_monthly_total(user_id)
+
+        currency_symbol = '€' if settings.get('currency') == 'EUR' else ('$' if settings.get('currency') == 'USD' else '£')
+        total_str = f"{currency_symbol}{monthly_total}"
+
+        send_monthly_report(user, total_str, active_subs)
+        messages.append("✓ Reporte mensual enviado.")
+
+    if not messages:
+        messages.append("No hay notificaciones pendientes por enviar (sin renovaciones y/o configuración desactivada).")
+
+    return jsonify({'success': True, 'messages': messages})
+
+
 # ─── MAIN ────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
     init_db()
     seed_test_user()
+
+    # Start scheduler only in main process (not in reloader)
+    import os
+    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+        if not scheduler.running:
+            scheduler.start()
+            print("✓ APScheduler iniciado - Notificaciones diarias a las 09:00")
+
     app.run(debug=True, port=5000)
