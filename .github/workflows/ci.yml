@@ -14,7 +14,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install flake8
-      - run: flake8 MVP/ --max-line-length=120 --exclude=MVP/__pycache__,MVP/frontend,MVP/tests --extend-ignore=W291,W293
+      - run: flake8 SUBLY_1.0_ENTERPRISES/ --max-line-length=120 --exclude=SUBLY_1.0_ENTERPRISES/__pycache__,SUBLY_1.0_ENTERPRISES/frontend --extend-ignore=W291,W293
 
   test:
     name: Tests
@@ -25,5 +25,5 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install pytest flask flask-jwt-extended flask-cors python-dotenv bcrypt APScheduler mysql-connector-python
-      - run: pytest MVP/tests/ -v
+      - run: pip install pytest flask flask-jwt-extended flask-cors bcrypt mysql-connector-python
+      - run: pytest SUBLY_1.0_ENTERPRISES/tests/ -v
